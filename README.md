@@ -26,6 +26,6 @@
 
 ```bash
 git clone https://github.com/andrewsinelnikov/document-ai.git
-cd dogovir-za-khvylyn
+cd document-ai
 pip install -r requirements.txt
 streamlit run app/main.py
