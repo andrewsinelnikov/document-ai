@@ -1,7 +1,9 @@
+import styles from './Footer.module.css';
+
 export default function Footer() {
   return (
-    <footer className="bg-white py-6 border-t mt-12">
-      <div className="max-w-4xl mx-auto px-4 text-center text-sm text-diia-gray">
+    <footer className={styles.footer}>
+      <div className={styles.content}>
         <p>Працює на AI • Не заміна юриста • Інтеграція з Дія.Підпис</p>
       </div>
     </footer>
