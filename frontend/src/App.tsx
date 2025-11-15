@@ -3,16 +3,17 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
 import ContractFlow from './pages/ContractFlow';
+import styles from './App.module.css';
 
-export function App() {
+export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
+      <div className={styles.app}>
         <Header />
-        <main className="flex-1">
+        <main className={styles.main}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/contract" element={<ContractFlow />} /> 
+            <Route path="/contract" element={<ContractFlow />} />
           </Routes>
         </main>
         <Footer />
