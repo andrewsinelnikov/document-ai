@@ -1,0 +1,32 @@
+.card {
+  background-color: #ffffff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 2px solid transparent;
+  transition: border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: #007bff;
+}
+
+.icon {
+  width: 2rem;
+  height: 2rem;
+  color: #007bff;
+  margin-bottom: 0.75rem;
+}
+
+.title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #212529;
+}
+
+.description {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-top: 0.25rem;
+}

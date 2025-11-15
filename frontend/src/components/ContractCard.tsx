@@ -1,5 +1,6 @@
 import type { ContractType } from '../types/contract';
 import { Home, Briefcase, Lock, DollarSign } from 'lucide-react';
+import styles from './ContractCard.module.css';
 
 const icons = {
   "Оренда квартири": Home,
@@ -15,15 +16,11 @@ interface Props {
 
 export default function ContractCard({ type, onClick }: Props) {
   const Icon = icons[type];
-
   return (
-    <div 
-      onClick={onClick}
-      className="bg-white p-6 rounded-lg shadow-sm border-2 border-transparent hover:border-diia-blue transition-all cursor-pointer"
-    >
-      <Icon className="w-8 h-8 text-diia-blue mb-3" />
-      <h3 className="text-lg font-semibold text-diia-dark">{type}</h3>
-      <p className="text-sm text-diia-gray mt-1">Готово за 3–5 хвилин</p>
+    <div className={styles.card} onClick={onClick}>
+      <Icon className={styles.icon} />
+      <h3 className={styles.title}>{type}</h3>
+      <p className={styles.description}>Готово за 3–5 хвилин</p>
     </div>
   );
 }
