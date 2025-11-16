@@ -79,3 +79,37 @@
 .button:hover {
   background-color: #0056b3;
 }
+
+.backButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6c757d;
+  padding: 0.25rem;
+}
+
+.backButton:hover {
+  color: #212529;
+}
+
+.error {
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.contractPreview {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  font-family: monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+textarea.input {
+  resize: vertical;
+}
