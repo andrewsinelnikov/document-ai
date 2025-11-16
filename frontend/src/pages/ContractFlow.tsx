@@ -1,22 +1,25 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api, type ContractField } from '../api/api';
 import styles from './ContractFlow.module.css';
 import { Loader2, ArrowLeft, Check } from 'lucide-react';
+import validator from 'validator';  // Додано для валідації
 
 export default function ContractFlow() {
   const { state } = useLocation();
   const { type } = (state || {}) as { type: string };
   const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const [template, setTemplate] = useState<any>(null);
   const [fields, setFields] = useState<ContractField[]>([]);
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, any>>({});  // Змінили на any для чисел/дат
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatedContract, setGeneratedContract] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [serverValidated, setServerValidated] = useState(false);  // Флаг повної валідації
 
   useEffect(() => {
     if (!type) {
@@ -27,7 +30,6 @@ export default function ContractFlow() {
     api.getTemplate(type)
       .then((tmpl) => {
         setTemplate(tmpl);
-        // Фільтруємо видимі поля (без умовних, які залежать від інших)
         const visibleFields = tmpl.fields.filter((f: ContractField) => !f.conditional);
         setFields(visibleFields);
       })
@@ -41,38 +43,133 @@ export default function ContractFlow() {
   const currentField = fields[step];
   const progress = ((step + 1) / fields.length) * 100;
 
-  const handleNext = async () => {
-    if (!currentField) return;
+  const validateField = (field: ContractField, value: any): string | null => {
+    const validation = field.validation || {};
 
-    const value = answers[currentField.id] || '';
-    setErrors({});
-
-    // Клієнтська валідація
-    if (currentField.required && !value.trim()) {
-      setErrors({ [currentField.id]: 'Це поле обов’язкове' });
-      return;
+    if (field.required && (value == null || value.toString().trim() === '')) {
+      return `${field.label} є обов’язковим`;
     }
 
-    if (step === fields.length - 1) {
-      // Генерація
-      setGenerating(true);
-      try {
-        const result = await api.generate(type, answers);
-        setGeneratedContract(result.content);
-      } catch (err: any) {
-        alert(err.message || 'Помилка генерації договору');
-      } finally {
-        setGenerating(false);
+    if (field.type === 'text' || field.type === 'textarea') {
+      if (validation.min_length && value.length < validation.min_length) {
+        return `Мінімум ${validation.min_length} символів`;
       }
-    } else {
-      setStep(step + 1);
+      if (validation.max_length && value.length > validation.max_length) {
+        return `Максимум ${validation.max_length} символів`;
+      }
+      if (validation.pattern && !new RegExp(validation.pattern).test(value)) {
+        return 'Невірний формат';
+      }
     }
+
+    if (field.type === 'number') {
+      const num = Number(value);
+      if (isNaN(num)) return 'Повинно бути числом';
+      if (validation.min && num < validation.min) return `Мінімум ${validation.min}`;
+      if (validation.max && num > validation.max) return `Максимум ${validation.max}`;
+    }
+
+    if (field.type === 'email') {
+      if (!validator.isEmail(value)) return 'Невірний email';
+    }
+
+    if (field.type === 'phone') {
+      if (!validator.isMobilePhone(value, 'uk-UA')) return 'Невірний номер телефону';
+    }
+
+    if (field.type === 'date') {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return 'Невірна дата';
+      if (validation.future_date && date <= new Date()) return 'Дата повинна бути у майбутньому';
+    }
+
+    return null;
   };
 
   const handleInputChange = (value: string) => {
-    setAnswers({ ...answers, [currentField.id]: value });
-    if (errors[currentField.id]) {
-      setErrors({ ...errors, [currentField.id]: '' });
+    let formattedValue: any = value;
+    if (currentField.type === 'number') {
+      formattedValue = value ? Number(value) : null;
+    } else if (currentField.type === 'date') {
+      formattedValue = value ? new Date(value).toISOString().split('T')[0] : null;
+    }
+
+    setAnswers({ ...answers, [currentField.id]: formattedValue });
+    const error = validateField(currentField, formattedValue);
+    setErrors({ ...errors, [currentField.id]: error || '' });
+  };
+
+  const handleNext = async () => {
+    if (!currentField) return;
+
+    const value = answers[currentField.id];
+    const clientError = validateField(currentField, value);
+
+    if (clientError) {
+      setErrors({ ...errors, [currentField.id]: clientError });
+      inputRef.current?.focus();
+      return;  // Не переходити далі
+    }
+
+    // Опціонально: бекенд-валідація для цього поля (якщо потрібно)
+    // const partialData = { [currentField.id]: value };
+    // const validation = await api.validate(type, partialData);
+    // if (!validation.valid) {
+    //   setErrors({ ...errors, [currentField.id]: validation.errors[0]?.message || '' });
+    //   return;
+    // }
+
+    if (step === fields.length - 1) {
+      // Повна валідація перед генерацією
+      await handleGenerate();
+    } else {
+      setStep(step + 1);
+      setServerValidated(false);  // Скидання для нової генерації
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (serverValidated) return;  // Уникаємо повторів
+
+    setGenerating(true);
+    const formattedAnswers: Record<string, any> = { ...answers };
+
+    // Клієнтська перевірка всіх полів
+    const allErrors: Record<string, string> = {};
+    fields.forEach((field) => {
+      const error = validateField(field, formattedAnswers[field.id]);
+      if (error) allErrors[field.id] = error;
+    });
+
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      setGenerating(false);
+      alert('Виправте помилки в попередніх полях');
+      return;
+    }
+
+    // Бекенд-валідація
+    try {
+      const validation = await api.validate(type, formattedAnswers);
+      if (!validation.valid) {
+        const errMap: Record<string, string> = {};
+        validation.errors.forEach((e: any) => {
+          errMap[e.field] = e.message;
+        });
+        setErrors(errMap);
+        setGenerating(false);
+        alert('Виправте помилки в формі');
+        return;
+      }
+
+      // Генерація, якщо все OK
+      const result = await api.generate(type, formattedAnswers);
+      setGeneratedContract(result.content);
+      setServerValidated(true);
+    } catch (err: any) {
+      alert(err.message || 'Помилка генерації');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -167,10 +264,11 @@ export default function ContractFlow() {
               </select>
             ) : (
               <input
-                type={currentField.type === 'number' ? 'number' : 'text'}
+                ref={inputRef}
+                type={currentField.type === 'number' ? 'number' : currentField.type || 'text'}
                 className={styles.input}
                 placeholder="Ваша відповідь..."
-                value={answers[currentField.id] || ''}
+                value={answers[currentField.id] != null ? answers[currentField.id] : ''}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleNext()}
               />
@@ -182,7 +280,7 @@ export default function ContractFlow() {
 
             <button
               onClick={handleNext}
-              disabled={generating}
+              disabled={generating || !!errors[currentField.id]}
               className={styles.button}
             >
               {generating ? (
