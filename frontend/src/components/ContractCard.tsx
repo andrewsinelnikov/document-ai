@@ -1,20 +1,32 @@
-import type { ContractType } from '../types/contract';
+// import type { ContractType } from '../types/contract';
 import { Home, Briefcase, Lock, DollarSign } from 'lucide-react';
 import styles from './ContractCard.module.css';
 
-const icons = {
+// const icons = {
+//   "Оренда квартири": Home,
+//   "Надання послуг (ФОП)": Briefcase,
+//   "NDA": Lock,
+//   "Позика": DollarSign,
+// };
+
+const icons: Record<string, any> = {
   "Оренда квартири": Home,
   "Надання послуг (ФОП)": Briefcase,
   "NDA": Lock,
   "Позика": DollarSign,
+  "Договір оренди квартири": Home,       
+  "Договір позики": DollarSign,          
+  "НДА": Lock,
+  "Договір надання послуг": Briefcase,
 };
 
 interface Props {
-  type: ContractType;
+  type: string; 
   onClick: () => void;
 }
 
 export default function ContractCard({ type, onClick }: Props) {
+  // const Icon = icons[type];
   const Icon = icons[type];
   return (
     <div className={styles.card} onClick={onClick}>
