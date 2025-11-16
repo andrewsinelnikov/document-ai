@@ -1,90 +1,203 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import type { ContractType } from '../types/contract';
+import { api, type ContractField } from '../api/api';
 import styles from './ContractFlow.module.css';
-
-const questions: Record<ContractType, string[]> = {
-  'Оренда квартири': [
-    'Адреса квартири?',
-    'ПІБ орендодавця?',
-    'ПІБ орендаря?',
-    'Термін оренди (місяців)?',
-    'Місячна плата (грн)?',
-  ],
-  'Надання послуг (ФОП)': [
-    'Назва послуги?',
-    'ПІБ замовника?',
-    'ПІБ виконавця?',
-    'Вартість послуги (грн)?',
-  ],
-  'NDA': ['ПІБ сторони 1?', 'ПІБ сторони 2?', 'Термін дії угоди (місяців)?'],
-  'Позика': [
-    'Сума позики (грн)?',
-    'ПІБ позичальника?',
-    'ПІБ позикодавця?',
-    'Термін повернення (місяців)?',
-  ],
-};
+import { Loader2, ArrowLeft, Check } from 'lucide-react';
 
 export default function ContractFlow() {
   const { state } = useLocation();
-  const { type } = (state || {}) as { type: ContractType };
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<string[]>([]);
+  const { type } = (state || {}) as { type: string };
   const navigate = useNavigate();
 
+  const [template, setTemplate] = useState<any>(null);
+  const [fields, setFields] = useState<ContractField[]>([]);
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [generatedContract, setGeneratedContract] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   useEffect(() => {
-    if (!type || !questions[type]) {
-      alert('Невалідний тип договору!');
+    if (!type) {
       navigate('/');
+      return;
     }
+
+    api.getTemplate(type)
+      .then((tmpl) => {
+        setTemplate(tmpl);
+        // Фільтруємо видимі поля (без умовних, які залежать від інших)
+        const visibleFields = tmpl.fields.filter((f: ContractField) => !f.conditional);
+        setFields(visibleFields);
+      })
+      .catch(() => {
+        alert('Шаблон не знайдено');
+        navigate('/');
+      })
+      .finally(() => setLoading(false));
   }, [type, navigate]);
 
-  if (!type || !questions[type]) return null;
+  const currentField = fields[step];
+  const progress = ((step + 1) / fields.length) * 100;
 
-  const currentQuestion = questions[type][step];
+  const handleNext = async () => {
+    if (!currentField) return;
 
-  const handleAnswer = (answer: string) => {
-    const newAnswers = [...answers, answer];
-    setAnswers(newAnswers);
-    if (step < questions[type].length - 1) {
-      setStep(step + 1);
+    const value = answers[currentField.id] || '';
+    setErrors({});
+
+    // Клієнтська валідація
+    if (currentField.required && !value.trim()) {
+      setErrors({ [currentField.id]: 'Це поле обов’язкове' });
+      return;
+    }
+
+    if (step === fields.length - 1) {
+      // Генерація
+      setGenerating(true);
+      try {
+        const result = await api.generate(type, answers);
+        setGeneratedContract(result.content);
+      } catch (err: any) {
+        alert(err.message || 'Помилка генерації договору');
+      } finally {
+        setGenerating(false);
+      }
     } else {
-      // TODO: надіслати на бекенд
-      alert(`Договір "${type}" згенеровано!`);
-      navigate('/');
+      setStep(step + 1);
     }
   };
+
+  const handleInputChange = (value: string) => {
+    setAnswers({ ...answers, [currentField.id]: value });
+    if (errors[currentField.id]) {
+      setErrors({ ...errors, [currentField.id]: '' });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.card}>
+          <Loader2 className="animate-spin mx-auto" />
+          <p className="text-center mt-2">Завантаження шаблону...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (generatedContract) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.card}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={styles.title}>Договір згенеровано!</h2>
+            <button onClick={() => navigate('/')} className={styles.backButton}>
+              <ArrowLeft size={20} />
+            </button>
+          </div>
+          <div className={styles.contractPreview}>
+            <pre className="whitespace-pre-wrap font-sans text-sm">{generatedContract}</pre>
+          </div>
+          <button
+            onClick={() => {
+              const blob = new Blob([generatedContract], { type: 'text/markdown' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${template.title}.md`;
+              a.click();
+            }}
+            className={styles.button}
+          >
+            Завантажити .md
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h2 className={styles.title}>{type}</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className={styles.title}>{template?.title}</h2>
+          <button onClick={() => navigate('/')} className={styles.backButton}>
+            <ArrowLeft size={20} />
+          </button>
+        </div>
+
         <div className={styles.progress}>
           <div className={styles.progressText}>
-            Питання {step + 1} з {questions[type].length}
+            Питання {step + 1} з {fields.length}
           </div>
           <div className={styles.progressBar}>
             <div
               className={styles.progressFill}
-              style={{ width: `${((step + 1) / questions[type].length) * 100}%` }}
+              style={{ width: `${progress}%` }}
             />
           </div>
         </div>
-        {currentQuestion && (
+
+        {currentField && (
           <div>
-            <p className={styles.question}>{currentQuestion}</p>
-            <input
-              type="text"
-              className={styles.input}
-              placeholder="Ваша відповідь..."
-              onKeyDown={(e) => e.key === 'Enter' && handleAnswer(e.currentTarget.value)}
-            />
+            <p className={styles.question}>{currentField.label}</p>
+
+            {currentField.type === 'textarea' ? (
+              <textarea
+                className={styles.input}
+                placeholder="Введіть відповідь..."
+                value={answers[currentField.id] || ''}
+                onChange={(e) => handleInputChange(e.target.value)}
+                rows={4}
+              />
+            ) : currentField.type === 'select' && currentField.options ? (
+              <select
+                className={styles.input}
+                value={answers[currentField.id] || ''}
+                onChange={(e) => handleInputChange(e.target.value)}
+              >
+                <option value="">Оберіть...</option>
+                {currentField.options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={currentField.type === 'number' ? 'number' : 'text'}
+                className={styles.input}
+                placeholder="Ваша відповідь..."
+                value={answers[currentField.id] || ''}
+                onChange={(e) => handleInputChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleNext()}
+              />
+            )}
+
+            {errors[currentField.id] && (
+              <p className={styles.error}>{errors[currentField.id]}</p>
+            )}
+
             <button
-              onClick={() => handleAnswer((document.querySelector('input') as HTMLInputElement).value)}
+              onClick={handleNext}
+              disabled={generating}
               className={styles.button}
             >
-              Далі
+              {generating ? (
+                <>
+                  <Loader2 className="animate-spin inline mr-2" size={16} />
+                  Генерація...
+                </>
+              ) : step === fields.length - 1 ? (
+                <>
+                  <Check size={16} className="inline mr-2" />
+                  Згенерувати договір
+                </>
+              ) : (
+                'Далі'
+              )}
             </button>
           </div>
         )}
