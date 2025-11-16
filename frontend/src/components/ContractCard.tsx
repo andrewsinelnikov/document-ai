@@ -1,5 +1,5 @@
 // import type { ContractType } from '../types/contract';
-import { Home, Briefcase, Lock, DollarSign } from 'lucide-react';
+import { Home, Briefcase, Lock, DollarSign, FileText } from 'lucide-react';
 import styles from './ContractCard.module.css';
 
 // const icons = {
@@ -27,7 +27,7 @@ interface Props {
 
 export default function ContractCard({ type, onClick }: Props) {
   // const Icon = icons[type];
-  const Icon = icons[type];
+  const Icon = icons[type] || FileText;
   return (
     <div className={styles.card} onClick={onClick}>
       <Icon className={styles.icon} />
