@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { api, type ContractField } from '../api/api';
 import styles from './ContractFlow.module.css';
 import { Loader2, ArrowLeft, Check } from 'lucide-react';
-import validator from 'validator';  // Додано для валідації
+import validator from 'validator';  
+import { jsPDF } from 'jspdf';
 
 export default function ContractFlow() {
   const { state } = useLocation();
@@ -197,7 +198,7 @@ export default function ContractFlow() {
           <div className={styles.contractPreview}>
             <pre className="whitespace-pre-wrap font-sans text-sm">{generatedContract}</pre>
           </div>
-          <button
+          {/* <button
             onClick={() => {
               const blob = new Blob([generatedContract], { type: 'text/markdown' });
               const url = URL.createObjectURL(blob);
@@ -209,7 +210,33 @@ export default function ContractFlow() {
             className={styles.button}
           >
             Завантажити .md
+          </button> */}
+          
+          <button
+            onClick={() => {
+              const doc = new jsPDF();
+              doc.setFont('helvetica');
+              doc.setFontSize(12);
+              
+              // Простий перенос тексту
+              const splitText = doc.splitTextToSize(generatedContract, 180);
+              doc.text(splitText, 15, 20);
+              
+              // Дисклеймер
+              doc.setFontSize(10);
+              doc.text(
+                "УВАГА: Цей документ згенеровано автоматично на основі типового шаблону. " +
+                "Сервіс не надає юридичних консультацій. Рекомендуємо перевірити договір у юриста при наявності особливих умов.",
+                15, 280
+              );
+
+              doc.save(`${template?.title || 'Договір'}.pdf`);
+            }}
+            className={styles.button}
+          >
+            Завантажити PDF
           </button>
+
         </div>
       </div>
     );
