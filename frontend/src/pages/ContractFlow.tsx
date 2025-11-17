@@ -187,7 +187,7 @@ export default function ContractFlow() {
     // 1. Додаємо шрифт з підтримкою кирилиці
     doc.addFileToVFS('Roboto-Regular.ttf', robotoFont.base64);
     doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-    doc.setFont('Roboto'); // ← обов’язково!
+    doc.setFont('Roboto'); 
 
     // 2. Налаштування тексту
     doc.setFontSize(12);
@@ -266,7 +266,7 @@ export default function ContractFlow() {
             Завантажити .md
           </button> */}
           
-          <button
+          {/* <button
             onClick={() => {
               const doc = new jsPDF();
               doc.setFont('helvetica');
@@ -286,6 +286,15 @@ export default function ContractFlow() {
 
               doc.save(`${template?.title || 'Договір'}.pdf`);
             }}
+            className={styles.button}
+          >
+            Завантажити PDF
+          </button> */}
+
+          <button
+            onClick={handleDownloadPDF}
+            disabled={!generatedContract}
+            // className={styles.downloadBtn}
             className={styles.button}
           >
             Завантажити PDF
