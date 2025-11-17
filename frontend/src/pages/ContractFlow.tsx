@@ -5,6 +5,7 @@ import styles from './ContractFlow.module.css';
 import { Loader2, ArrowLeft, Check } from 'lucide-react';
 import validator from 'validator';  
 import { jsPDF } from 'jspdf';
+import robotoFont from '../fonts/Roboto-Regular.base64.json';
 
 export default function ContractFlow() {
   const { state } = useLocation();
@@ -172,6 +173,59 @@ export default function ContractFlow() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleDownloadPDF = () => {
+    if (!generatedContract) return;
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    // 1. Додаємо шрифт з підтримкою кирилиці
+    doc.addFileToVFS('Roboto-Regular.ttf', robotoFont.base64);
+    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+    doc.setFont('Roboto'); // ← обов’язково!
+
+    // 2. Налаштування тексту
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+
+    // 3. Розбиваємо великий текст на рядки (щоб не вилітав за межі)
+    const pageWidth = 180; // 210mm – поля по 15mm зліва і справа
+    const lines = doc.splitTextToSize(generatedContract, pageWidth);
+
+    // 4. Виводимо текст з автоматичним переходом на нову сторінку
+    let y = 20; // відступ зверху
+    const lineHeight = 7;
+
+    lines.forEach((line: string) => {
+      if (y > 280) {          // якщо нижче 280mm — нова сторінка
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(line, 15, y);
+      y += lineHeight;
+    });
+
+    // 5. Дисклеймер внизу останньої сторінки
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    const disclaimer = `
+      УВАГА: Цей документ згенеровано автоматично на основі типового шаблону.
+      Сервіс не надає юридичних консультацій і не несе відповідальності за відповідність конкретній ситуації.
+      Рекомендуємо перевірити договір у кваліфікованого юриста.
+    `.trim();
+
+    const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth);
+    disclaimerLines.forEach((line: string, i: number) => {
+      doc.text(line, 15, y + 10 + i * 5);
+    });
+
+    // 6. Зберігаємо
+    doc.save(`${template?.title || 'Договір'}.pdf`);
   };
 
   if (loading) {
