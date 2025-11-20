@@ -1,318 +1,164 @@
+// src/pages/ContractFlow.tsx — ФІНАЛЬНА ВЕРСІЯ ДЛЯ AI-БЕКЕНДУ
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
-import { api, type ContractField } from '../api/api';
+import { useState } from 'react';
+import { generate } from '../api/api';
 import styles from './ContractFlow.module.css';
-import { Loader2, ArrowLeft, Check } from 'lucide-react';
-import validator from 'validator';  
-import { jsPDF } from 'jspdf';
-import robotoFont from '../fonts/Roboto-Regular.base64.json';
+import { Loader2, ArrowLeft } from 'lucide-react';
 
 export default function ContractFlow() {
   const { state } = useLocation();
-  const { type } = (state || {}) as { type: string };
   const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const [template, setTemplate] = useState<any>(null);
-  const [fields, setFields] = useState<ContractField[]>([]);
+  const contractType = (state as any)?.type;
+  if (!contractType) {
+    navigate('/');
+    return null;
+  }
+
+  // === Динамічні поля (можна винести в окремий файл) ===
+  const fieldsMap: Record<string, { id: string; label: string; type: string; required?: boolean }[]> = {
+    rent_contract: [
+      { id: "landlord_name", label: "ПІБ орендодавця", type: "text", required: true },
+      { id: "landlord_passport", label: "Паспорт орендодавця", type: "text", required: true },
+      { id: "landlord_phone", label: "Телефон орендодавця", type: "text", required: true },
+      { id: "tenant_name", label: "ПІБ орендаря", type: "text", required: true },
+      { id: "tenant_passport", label: "Паспорт орендаря", type: "text", required: true },
+      { id: "tenant_phone", label: "Телефон орендаря", type: "text", required: true },
+      { id: "property_address", label: "Адреса квартири", type: "text", required: true },
+      { id: "rent_amount", label: "Орендна плата (грн/місяць)", type: "number", required: true },
+      { id: "deposit_amount", label: "Застава (грн)", type: "number" },
+      { id: "start_date", label: "Дата початку оренди", type: "date", required: true },
+      { id: "end_date", label: "Дата закінчення оренди", type: "date", required: true },
+    ],
+    loan_contract: [
+      { id: "lender_name", label: "ПІБ позикодавця", type: "text", required: true },
+      { id: "lender_passport", label: "Паспорт позикодавця", type: "text", required: true },
+      { id: "lender_phone", label: "Телефон позикодавця", type: "text", required: true },
+      { id: "borrower_name", label: "ПІБ позичальника", type: "text", required: true },
+      { id: "borrower_passport", label: "Паспорт позичальника", type: "text", required: true },
+      { id: "borrower_phone", label: "Телефон позичальника", type: "text", required: true },
+      { id: "loan_amount", label: "Сума позики (грн)", type: "number", required: true },
+      { id: "interest_rate", label: "Відсотки річних (0 = безвідсоткова)", type: "number" },
+      { id: "return_date", label: "Дата повернення", type: "date", required: true },
+    ],
+    nda_contract: [
+      { id: "disclosing_party_name", label: "Розкриваюча сторона (ПІБ/компанія)", type: "text", required: true },
+      { id: "receiving_party_name", label: "Отримуюча сторона (ПІБ/компанія)", type: "text", required: true },
+      { id: "purpose", label: "Мета передачі інформації", type: "textarea", required: true },
+      { id: "confidential_info_description", label: "Що саме є конфіденційним", type: "textarea", required: true },
+      { id: "duration_years", label: "Строк дії (років)", type: "number" },
+      { id: "penalty_amount", label: "Штраф за порушення (грн)", type: "number", required: true },
+    ],
+    service_contract: [
+      { id: "provider_name", label: "ПІБ Виконавця (ФОП)", type: "text", required: true },
+      { id: "provider_fop_number", label: "ЄДРПОУ/Реєстр. номер ФОП", type: "text", required: true },
+      { id: "client_name", label: "ПІБ Замовника (ФОП)", type: "text", required: true },
+      { id: "client_fop_number", label: "ЄДРПОУ/Реєстр. номер Замовника", type: "text", required: true },
+      { id: "service_description", label: "Опис послуг", type: "textarea", required: true },
+      { id: "service_amount", label: "Вартість послуг (грн)", type: "number", required: true },
+      { id: "payment_term", label: "Термін оплати (днів після акту)", type: "number", required: true },
+    ],
+  };
+
+  const fields = fieldsMap[contractType] || [];
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, any>>({});  // Змінили на any для чисел/дат
-  const [loading, setLoading] = useState(true);
+  const [answers, setAnswers] = useState<Record<string, any>>({});
   const [generating, setGenerating] = useState(false);
-  const [generatedContract, setGeneratedContract] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [serverValidated, setServerValidated] = useState(false);  // Флаг повної валідації
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!type) {
-      navigate('/');
+  const current = fields[step];
+
+  const handleNext = () => {
+    if (!current) return;
+    if (current.required && !answers[current.id]?.toString().trim()) {
+      setError('Це поле обов’язкове');
       return;
     }
-
-    api.getTemplate(type)
-      .then((tmpl) => {
-        setTemplate(tmpl);
-        const visibleFields = tmpl.fields.filter((f: ContractField) => !f.conditional);
-        setFields(visibleFields);
-      })
-      .catch(() => {
-        alert('Шаблон не знайдено');
-        navigate('/');
-      })
-      .finally(() => setLoading(false));
-  }, [type, navigate]);
-
-  const currentField = fields[step];
-  const progress = ((step + 1) / fields.length) * 100;
-
-  const validateField = (field: ContractField, value: any): string | null => {
-    const validation = field.validation || {};
-
-    if (field.required && (value == null || value.toString().trim() === '')) {
-      return `${field.label} є обов’язковим`;
-    }
-
-    if (field.type === 'text' || field.type === 'textarea') {
-      if (validation.min_length && value.length < validation.min_length) {
-        return `Мінімум ${validation.min_length} символів`;
-      }
-      if (validation.max_length && value.length > validation.max_length) {
-        return `Максимум ${validation.max_length} символів`;
-      }
-      if (validation.pattern && !new RegExp(validation.pattern).test(value)) {
-        return 'Невірний формат';
-      }
-    }
-
-    if (field.type === 'number') {
-      const num = Number(value);
-      if (isNaN(num)) return 'Повинно бути числом';
-      if (validation.min && num < validation.min) return `Мінімум ${validation.min}`;
-      if (validation.max && num > validation.max) return `Максимум ${validation.max}`;
-    }
-
-    if (field.type === 'email') {
-      if (!validator.isEmail(value)) return 'Невірний email';
-    }
-
-    if (field.type === 'phone') {
-      if (!validator.isMobilePhone(value, 'uk-UA')) return 'Невірний номер телефону';
-    }
-
-    if (field.type === 'date') {
-      const date = new Date(value);
-      if (isNaN(date.getTime())) return 'Невірна дата';
-      if (validation.future_date && date <= new Date()) return 'Дата повинна бути у майбутньому';
-    }
-
-    return null;
-  };
-
-  const handleInputChange = (value: string) => {
-    let formattedValue: any = value;
-    if (currentField.type === 'number') {
-      formattedValue = value ? Number(value) : null;
-    } else if (currentField.type === 'date') {
-      formattedValue = value ? new Date(value).toISOString().split('T')[0] : null;
-    }
-
-    setAnswers({ ...answers, [currentField.id]: formattedValue });
-    const error = validateField(currentField, formattedValue);
-    setErrors({ ...errors, [currentField.id]: error || '' });
-  };
-
-  const handleNext = async () => {
-    if (!currentField) return;
-
-    const value = answers[currentField.id];
-    const clientError = validateField(currentField, value);
-
-    if (clientError) {
-      setErrors({ ...errors, [currentField.id]: clientError });
-      inputRef.current?.focus();
-      return;  // Не переходити далі
-    }
-
-    // Опціонально: бекенд-валідація для цього поля (якщо потрібно)
-    // const partialData = { [currentField.id]: value };
-    // const validation = await api.validate(type, partialData);
-    // if (!validation.valid) {
-    //   setErrors({ ...errors, [currentField.id]: validation.errors[0]?.message || '' });
-    //   return;
-    // }
-
+    setError('');
     if (step === fields.length - 1) {
-      // Повна валідація перед генерацією
-      await handleGenerate();
+      handleGenerate();
     } else {
       setStep(step + 1);
-      setServerValidated(false);  // Скидання для нової генерації
     }
   };
 
   const handleGenerate = async () => {
-    if (serverValidated) return;  // Уникаємо повторів
-
     setGenerating(true);
-    const formattedAnswers: Record<string, any> = { ...answers };
-
-    // Клієнтська перевірка всіх полів
-    const allErrors: Record<string, string> = {};
-    fields.forEach((field) => {
-      const error = validateField(field, formattedAnswers[field.id]);
-      if (error) allErrors[field.id] = error;
-    });
-
-    if (Object.keys(allErrors).length > 0) {
-      setErrors(allErrors);
-      setGenerating(false);
-      alert('Виправте помилки в попередніх полях');
-      return;
-    }
-
-    // Бекенд-валідація
+    setError('');
     try {
-      const validation = await api.validate(type, formattedAnswers);
-      if (!validation.valid) {
-        const errMap: Record<string, string> = {};
-        validation.errors.forEach((e: any) => {
-          errMap[e.field] = e.message;
-        });
-        setErrors(errMap);
-        setGenerating(false);
-        alert('Виправте помилки в формі');
-        return;
-      }
-
-      // Генерація, якщо все OK
-      const result = await api.generate(type, formattedAnswers);
-      setGeneratedContract(result.content);
-      setServerValidated(true);
+      const res = await generate(contractType, answers);
+      setResult(res);
     } catch (err: any) {
-      alert(err.message || 'Помилка генерації');
+      setError(err.response?.data?.detail || 'Помилка генерації договору');
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleDownloadPDF = () => {
-    if (!generatedContract) return;
-
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
-
-    // 1. Додаємо шрифт з підтримкою кирилиці
-    doc.addFileToVFS('Roboto-Regular.ttf', robotoFont.base64);
-    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-    doc.setFont('Roboto'); 
-
-    // 2. Налаштування тексту
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-
-    // 3. Розбиваємо великий текст на рядки (щоб не вилітав за межі)
-    const pageWidth = 180; // 210mm – поля по 15mm зліва і справа
-    const lines = doc.splitTextToSize(generatedContract, pageWidth);
-
-    // 4. Виводимо текст з автоматичним переходом на нову сторінку
-    let y = 20; // відступ зверху
-    const lineHeight = 7;
-
-    lines.forEach((line: string) => {
-      if (y > 280) {          // якщо нижче 280mm — нова сторінка
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(line, 15, y);
-      y += lineHeight;
-    });
-
-    // 5. Дисклеймер внизу останньої сторінки
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    const disclaimer = `
-      УВАГА: Цей документ згенеровано автоматично на основі типового шаблону.
-      Сервіс не надає юридичних консультацій і не несе відповідальності за відповідність конкретній ситуації.
-      Рекомендуємо перевірити договір у кваліфікованого юриста.
-    `.trim();
-
-    const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth);
-    disclaimerLines.forEach((line: string, i: number) => {
-      doc.text(line, 15, y + 10 + i * 5);
-    });
-
-    // 6. Зберігаємо
-    doc.save(`${template?.title || 'Договір'}.pdf`);
-  };
-
-  if (loading) {
+  // === Рендер результату ===
+  if (result) {
     return (
       <div className={styles.container}>
         <div className={styles.card}>
-          <Loader2 className="animate-spin mx-auto" />
-          <p className="text-center mt-2">Завантаження шаблону...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (generatedContract) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.card}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className={styles.title}>Договір згенеровано!</h2>
+          <div className="flex justify-between items-center mb-6">
             <button onClick={() => navigate('/')} className={styles.backButton}>
-              <ArrowLeft size={20} />
+              <ArrowLeft />
+            </button>
+            <h2 className={styles.title}>Готово!</h2>
+          </div>
+
+          <div className="bg-gray-50 p-6 rounded-lg mb-6 max-h-96 overflow-y-auto">
+            <pre className="whitespace-pre-wrap text-sm font-sans">{result.content_markdown}</pre>
+          </div>
+
+          <div className="flex gap-4">
+            {result.content_pdf_base64 && (
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = `data:application/pdf;base64,${result.content_pdf_base64}`;
+                  link.download = `${result.title || 'Договір'}.pdf`;
+                  link.click();
+                }}
+                className={styles.button}
+              >
+                Завантажити PDF
+              </button>
+            )}
+            <button
+              onClick={() => {
+                const blob = new Blob([result.content_markdown], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${result.title || 'Договір'}.md`;
+                a.click();
+              }}
+              className={styles.button}
+            >
+              Завантажити .md
             </button>
           </div>
-          <div className={styles.contractPreview}>
-            <pre className="whitespace-pre-wrap font-sans text-sm">{generatedContract}</pre>
-          </div>
-          {/* <button
-            onClick={() => {
-              const blob = new Blob([generatedContract], { type: 'text/markdown' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${template.title}.md`;
-              a.click();
-            }}
-            className={styles.button}
-          >
-            Завантажити .md
-          </button> */}
-          
-          {/* <button
-            onClick={() => {
-              const doc = new jsPDF();
-              doc.setFont('helvetica');
-              doc.setFontSize(12);
-              
-              // Простий перенос тексту
-              const splitText = doc.splitTextToSize(generatedContract, 180);
-              doc.text(splitText, 15, 20);
-              
-              // Дисклеймер
-              doc.setFontSize(10);
-              doc.text(
-                "УВАГА: Цей документ згенеровано автоматично на основі типового шаблону. " +
-                "Сервіс не надає юридичних консультацій. Рекомендуємо перевірити договір у юриста при наявності особливих умов.",
-                15, 280
-              );
-
-              doc.save(`${template?.title || 'Договір'}.pdf`);
-            }}
-            className={styles.button}
-          >
-            Завантажити PDF
-          </button> */}
-
-          <button
-            onClick={handleDownloadPDF}
-            disabled={!generatedContract}
-            // className={styles.downloadBtn}
-            className={styles.button}
-          >
-            Завантажити PDF
-          </button>
-
         </div>
       </div>
     );
   }
 
+  // === Форма ===
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className={styles.title}>{template?.title}</h2>
+        <div className="flex justify-between items-center mb-6">
           <button onClick={() => navigate('/')} className={styles.backButton}>
-            <ArrowLeft size={20} />
+            <ArrowLeft />
           </button>
+          <h2 className={styles.title}>
+            {contractType === 'rent_contract' && 'Договір оренди'}
+            {contractType === 'loan_contract' && 'Договір позики'}
+            {contractType === 'nda_contract' && 'NDA'}
+            {contractType === 'service_contract' && 'Договір послуг'}
+          </h2>
         </div>
 
         <div className={styles.progress}>
@@ -322,72 +168,50 @@ export default function ContractFlow() {
           <div className={styles.progressBar}>
             <div
               className={styles.progressFill}
-              style={{ width: `${progress}%` }}
+              style={{ width: `${((step + 1) / fields.length) * 100}%` }}
             />
           </div>
         </div>
 
-        {currentField && (
-          <div>
-            <p className={styles.question}>{currentField.label}</p>
+        {current && (
+          <>
+            <p className={styles.question}>{current.label}</p>
 
-            {currentField.type === 'textarea' ? (
+            {current.type === 'textarea' ? (
               <textarea
                 className={styles.input}
-                placeholder="Введіть відповідь..."
-                value={answers[currentField.id] || ''}
-                onChange={(e) => handleInputChange(e.target.value)}
-                rows={4}
+                rows={5}
+                value={answers[current.id] || ''}
+                onChange={(e) => setAnswers({ ...answers, [current.id]: e.target.value })}
+                placeholder="Ваша відповідь..."
               />
-            ) : currentField.type === 'select' && currentField.options ? (
-              <select
-                className={styles.input}
-                value={answers[currentField.id] || ''}
-                onChange={(e) => handleInputChange(e.target.value)}
-              >
-                <option value="">Оберіть...</option>
-                {currentField.options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
             ) : (
               <input
-                ref={inputRef}
-                type={currentField.type === 'number' ? 'number' : currentField.type || 'text'}
+                type={current.type === 'number' ? 'number' : current.type === 'date' ? 'date' : 'text'}
                 className={styles.input}
-                placeholder="Ваша відповідь..."
-                value={answers[currentField.id] != null ? answers[currentField.id] : ''}
-                onChange={(e) => handleInputChange(e.target.value)}
+                value={answers[current.id] || ''}
+                onChange={(e) => setAnswers({ ...answers, [current.id]: e.target.value })}
                 onKeyDown={(e) => e.key === 'Enter' && handleNext()}
+                placeholder="Введіть відповідь"
               />
             )}
 
-            {errors[currentField.id] && (
-              <p className={styles.error}>{errors[currentField.id]}</p>
-            )}
+            {error && <p className={styles.error}>{error}</p>}
 
             <button
               onClick={handleNext}
-              disabled={generating || !!errors[currentField.id]}
+              disabled={generating}
               className={styles.button}
             >
               {generating ? (
-                <>
-                  <Loader2 className="animate-spin inline mr-2" size={16} />
-                  Генерація...
-                </>
+                <>Генерація <Loader2 className="animate-spin inline ml-2" /></>
               ) : step === fields.length - 1 ? (
-                <>
-                  <Check size={16} className="inline mr-2" />
-                  Згенерувати договір
-                </>
+                'Згенерувати договір'
               ) : (
                 'Далі'
               )}
             </button>
-          </div>
+          </>
         )}
       </div>
     </div>
