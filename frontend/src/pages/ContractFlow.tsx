@@ -1,4 +1,3 @@
-// src/pages/ContractFlow.tsx — ФІНАЛЬНА ВЕРСІЯ ДЛЯ AI-БЕКЕНДУ
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { generate } from '../api/api';

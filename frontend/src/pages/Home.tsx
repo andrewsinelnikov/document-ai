@@ -1,16 +1,18 @@
+// src/pages/Home.tsx — ФІНАЛЬНА ВЕРСІЯ (працює з новим бекендом)
+
 import { useEffect, useState } from 'react';
 import ContractCard from '../components/ContractCard';
-import { api, type ContractTypeResponse } from '../api/api';
+import { getContractTypes } from '../api/api'; // ← ЗАМІНИВ api.getContractTypes на іменовану функцію
 import { useNavigate } from 'react-router-dom';
 import styles from './Home.module.css';
 
 export default function Home() {
-  const [contracts, setContracts] = useState<ContractTypeResponse[]>([]);
+  const [contracts, setContracts] = useState<{ id: string; title: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.getContractTypes()
+    getContractTypes() // ← тепер саме так
       .then(setContracts)
       .catch(() => alert('Помилка завантаження типів договорів'))
       .finally(() => setLoading(false));
