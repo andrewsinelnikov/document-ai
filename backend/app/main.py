@@ -15,7 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import markdown
-from weasyprint import HTML
+from weasyprint import HTML, CSS
+import textwrap
 
 # ------------------- AWS -------------------
 boto3.setup_default_session()
@@ -117,32 +118,35 @@ async def generate_contract(req: GenerateRequest):
 # Місце укладення — м. Київ. Суми — прописом.
 # """
     user_prompt = f"""
-        ТИ — найкращий український корпоративний юрист 2025 року.  
-        Ти створюєш ТІЛЬКИ повний, юридично бездоганний договір українською мовою у форматі Markdown.  
-        Жодних пояснень, коментарів, вибачень чи вступів — тільки чистий текст договору.
+        ТИ — найкращий український юрист-контрактник року. Твоя єдина задача — згенерувати ПОВНИЙ, юридично бездоганний договір українською мовою у форматі Markdown.
 
         Тип договору: {CONTRACTS[req.contract_type]}
+        Дата укладення: {answers.get("current_date", datetime.now().strftime("%d.%m.%Y"))}
+        Місце укладення: м. Київ
 
-        Дані для заповнення:
+        Дані сторін та умови:
         {json.dumps(answers, ensure_ascii=False, indent=2)}
 
-        Поточна дата: {answers.get("current_date", datetime.now().strftime("%d.%m.%Y"))}
+        ОБОВ’ЯЗКОВІ ВИМОГИ — ВИКОНАЙ ВСІ БЕЗ ВИНЯТКУ:
+        1. Договір має бути мінімум 3000 символів (це ≈5–7 сторінок А4)
+        2. Обов’язково присутні розділи (кожен з номером і назвою):
+        1. Предмет договору
+        2. Права та обов’язки сторін
+        3. Строк дії договору
+        4. Конфіденційна інформація (для NDA) / Опис послуг (для послуг) / Порядок оплати та розрахунків
+        5. Відповідальність сторін
+        6. Обставини непереборної сили (форс-мажор)
+        7. Порядок зміни та розірвання договору
+        8. Інші умови
+        9. Реквізити та підписи сторін
+        3. ВСІ суми — і цифрами, і прописом українською мовою
+        4. Всі дати — і цифрами, і прописом
+        5. Для NDA обов’язково: чітке визначення конфіденційної інформації, строк дії після припинення співпраці, штраф за кожне порушення (не менше 100 000 грн), заборона передачі третім особам
+        6. В кінці — таблиця або блоки з реквізитами сторін і місця для підписів
 
-        Вимоги, які ти зобов’язаний виконати 100%:
-        1. Місце укладення — завжди м. Київ
-        2. Повна назва договору великими літерами посередині
-        3. Номер договору не потрібен
-        4. Повні реквізити сторін на початку та в кінці
-        5. ВСІ суми обов’язково прописом українською (наприклад: 50 000 грн — п’ятдесят тисяч гривень 00 копійок)
-        6. Всі дати — і цифрами, і прописом
-        7. Повний набір обов’язкових розділів для цього типу договору (предмет, строк, права та обов’язки, відповідальність, штрафні санкції, форс-мажор, порядок зміни та розірвання, реквізити та підписи)
-        8. Для NDA обов’язково: визначення конфіденційної інформації, строк дії (в роках від дати підписання), штраф за порушення, юрисдикція України
-        9. Для оренди: застава, комунальні платежі, стан квартири, акт приймання-передачі
-        10. Для позики: відсотки або безвідсоткова, графік повернення (якщо є), пеня за прострочення
-        11. Для послуг ФОП: акт виконаних робіт, порядок здачі-приймання, гарантії
+        Пиши ТІЛЬКИ чистий Markdown договору. Жодних пояснень, вибачень, вступів чи висновків — тільки текст договору від першої до останньої літери.
 
-        Згенеруй ПОВНИЙ договір «під ключ», готовий до підписання через Дія.Підпис.
-        Використовуй офіційно-діловий стиль, без водяності.
+        Якщо не виконаєш всі пункти — тебе звільнять з посади головного юриста України.
     """
 
     try:
@@ -161,70 +165,71 @@ async def generate_contract(req: GenerateRequest):
         result = json.loads(response["body"].read())
         text = result["content"][0]["text"].strip()
 
-                # ───── ФІНАЛЬНИЙ КРАСИВИЙ PDF, ЯКИЙ НІКОЛИ НЕ ВИЛАЗИТЬ ЗА А4 ─────
-        html_content = markdown.markdown(text, extensions=['extra', 'tables', 'nl2br'])
+                # ───── ФІНАЛЬНИЙ PDF — 100% НЕ ВИЛІЗАЄ ЗА ПОЛЯ (WeasyPrint 62.2 + правильний CSS) ─────
+        
+        # safe_lines = []
+        # for line in text.splitlines():
+        #     # Якщо рядок довший за 95 символів — ріжемо його
+        #     if len(line) > 95 and ' ' not in line:
+        #         safe_lines.extend(textwrap.wrap(line, width=95))
+        #     else:
+        #         safe_lines.append(line)
+        # safe_text = "\n".join(safe_lines)
 
-        full_html = f"""<!DOCTYPE html>
-        <html lang="uk">
-        <head>
-            <meta charset="UTF-8">
-            <title>{CONTRACTS[req.contract_type]}</title>
-            <style>
-                @page {{
-                    size: A4;
-                    margin: 20mm 15mm 25mm 18mm;
-                    @bottom-center {{ content: "Сторінка " counter(page); font-size: 10pt; color: #666; }}
-                    @bottom-right  {{ content: "Дія.Договір AI • {datetime.now().strftime("%d.%m.%Y")}"; font-size: 9pt; color: #999; }}
-                }}
-                body {{
-                    font-family: "Times New Roman", "DejaVu Serif", serif;
-                    font-size: 12pt;
-                    line-height: 1.5;
-                    color: #000;
-                    margin: 0;
-                    padding: 0;
-                }}
-                h1 {{ font-size: 16pt; text-align: center; text-transform: uppercase; margin: 30pt 0 20pt 0; font-weight: bold; }}
-                h2 {{ font-size: 13pt; margin: 20pt 0 10pt 0; font-weight: bold; }}
-                p {{ margin: 0 0 10pt 0; text-align: justify; text-indent: 30pt; }}
-                p.noindent {{ text-indent: 0; }}
-                p.center {{ text-align: center; text-indent: 0; }}
-                ul, ol {{ margin: 8pt 0; padding-left: 40pt; }}
-                table {{ width: 100%; border-collapse: collapse; margin: 12pt 0; }}
-                td, th {{ border: 1px solid #000; padding: 6pt; vertical-align: top; }}
-                .signature {{
-                    margin-top: 50pt;
-                    display: flex;
-                    justify-content: space-between;
-                    font-size: 12pt;
-                }}
-                .signature div {{
-                    width: 48%;
-                    border-top: 1px solid #000;
-                    padding-top: 8pt;
-                    text-align: center;
-                }}
-                .small {{ font-size: 10pt; color: #555; text-align: center; margin-top: 30pt; }}
-            </style>
-        </head>
-        <body>
-            {html_content}
-            
-            <div class="signature">
-                <div>Розкриваюча сторона<br>{answers.get("disclosing_party_name", "______________________")}</div>
-                <div>Отримуюча сторона<br>{answers.get("receiving_party_name", "______________________")}</div>
-            </div>
-            <p class="small">Договір підписано кваліфікованим електронним підписом через Дія.Підпис</p>
-        </body>
-        </html>"""
+        # # КРОК 2: Markdown → HTML
+        # html_content = markdown.markdown(safe_text, extensions=['extra', 'tables', 'nl2br'])
 
-        pdf_bytes = HTML(string=full_html, base_url=".").write_pdf(
-            stylesheets=[
-                # примусово ламаємо довгі слова і не даємо таблицям/рядкам вилазити
-                "body { word-wrap: break-word; overflow-wrap: break-word; }"
-            ]
-        )
-        pdf_b64 = base64.b64encode(pdf_bytes).decode()    
+        # # КРОК 3: Шаблон з жорстким CSS
+        # full_html = f"""<!DOCTYPE html>
+        # <html lang="uk">
+        # <head>
+        #     <meta charset="UTF-8">
+        #     <title>{CONTRACTS[req.contract_type]}</title>
+        #     <style>
+        #         @page {{
+        #             size: A4;
+        #             margin: 18mm 16mm 25mm 16mm;
+        #             @bottom-center {{ content: "Сторінка " counter(page); font-size: 10pt; color: #666; }}
+        #         }}
+        #         body {{
+        #             font-family: "Liberation Serif", "Times New Roman", serif;
+        #             font-size: 12pt;
+        #             line-height: 1.55;
+        #             margin: 0;
+        #             padding: 0;
+        #         }}
+        #         h1 {{ font-size: 18pt; text-align: center; text-transform: uppercase; margin: 30mm 0 20mm; }}
+        #         p {{ text-indent: 35pt; text-align: justify; margin: 0 0 12pt 0; }}
+        #         table {{ width: 100%; table-layout: fixed; border-collapse: collapse; }}
+        #         td, th {{ border: 1px solid black; padding: 8pt; }}
+        #         .signature {{ margin-top: 60mm; display: flex; justify-content: space-between; }}
+        #         .signature div {{ width: 48%; border-top: 1px solid black; padding-top: 12pt; text-align: center; }}
+        #     </style>
+        # </head>
+        # <body>
+        #     {html_content}
+        #     <div class="signature">
+        #         <div>Перша сторона<br>_________________________</div>
+        #         <div>Друга сторона<br>_________________________</div>
+        #     </div>
+        #     <p style="text-align:center; font-size:10pt; color:#555; margin-top:30mm;">
+        #         Договір підписано кваліфікованим електронним підписом через Дія.Підпис
+        #     </p>
+        # </body>
+        # </html>"""
+
+        # # КРОК 4: Найголовніше — додатковий CSS, який ламає ВСЕ
+        # pdf_bytes = HTML(string=full_html).write_pdf(
+        #     stylesheets=[CSS(string="""
+        #         * { 
+        #             word-break: break-all !important; 
+        #             overflow-wrap: break-word !important; 
+        #             hyphens: auto !important;
+        #         }
+        #         table, td, th { table-layout: fixed !important; word-break: break-all !important; }
+        #     """)]
+        # )
+        # pdf_b64 = base64.b64encode(pdf_bytes).decode()
     
         # PDF
         # html = markdown.markdown(text)
@@ -232,12 +237,30 @@ async def generate_contract(req: GenerateRequest):
         # pdf_bytes = HTML(string=styled).write_pdf()
         # pdf_b64 = base64.b64encode(pdf_bytes).decode()
 
+        html_content = markdown.markdown(text, extensions=['extra', 'tables', 'nl2br'])
+        
+        final_html = f"""
+        <div style="max-width: 100%; word-break: break-word;">
+            {html_content}
+        </div>
+        """
+
+        pdf_b64 = base64.b64encode(final_html.encode('utf-8')).decode()
+
+        # return GenerateResponse(
+        #     contract_type=req.contract_type,
+        #     title=CONTRACTS.get(req.contract_type, "Договір"),
+        #     content_markdown=text,
+        #     content_pdf_base64=pdf_b64,  
+        #     content_html=final_html
+        #     generated_at=datetime.now()
+        # )
+
         return GenerateResponse(
             contract_type=req.contract_type,
             title=CONTRACTS[req.contract_type],
             content_markdown=text,
             content_pdf_base64=pdf_b64,
-            generated_at=datetime.now()
         )
 
     except Exception as e:

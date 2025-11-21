@@ -157,3 +157,28 @@ textarea.input {
   padding-top: 0.5rem;
   text-align: center;
 }
+
+/* ФІНАЛЬНЕ ПРЕВ’Ю — НІКОЛИ НЕ ВИЛАЗИТЬ */
+.resultPreview {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  padding: 2.5rem 2rem;
+  margin: 2rem 0;
+  overflow: hidden;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.resultPreview h1 { font-size: 1.6rem; text-align: center; text-transform: uppercase; margin: 1rem 0 1.5rem; }
+.resultPreview h2 { font-size: 1.2rem; margin: 1.5rem 0 0.8rem; }
+.resultPreview p { margin: 0.6rem 0; text-align: justify; text-indent: 2rem; }
+.resultPreview p:first-of-type { text-indent: 0; }
+.resultPreview ul, .resultPreview ol { margin: 0.8rem 0; padding-left: 2.5rem; }
+
+/* Найголовніше — ламаємо довгі слова */
+.resultPreview * {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
