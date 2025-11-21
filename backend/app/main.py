@@ -2,6 +2,10 @@ import os
 import json
 import boto3
 import base64
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -19,8 +23,8 @@ bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_DEFAULT_REG
 s3 = boto3.client("s3")
 
 S3_BUCKET = os.getenv("S3_KNOWLEDGE_BUCKET")  # ← твій бакет з законами/шаблонами
-MODEL_ID = os.getenv("BEDROCK_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
-
+# MODEL_ID = os.getenv("BEDROCK_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+MODEL_ID = os.getenv("BEDROCK_MODEL", "anthropic.claude-3-sonnet-20240229-v1:0")
 # ------------------- FastAPI -------------------
 app = FastAPI(title="Дія.Договір AI (Bedrock + S3)", version="2.0")
 
@@ -52,23 +56,36 @@ class GenerateResponse(BaseModel):
     generated_at: datetime
 
 # ------------------- RAG з S3 -------------------
-def get_rag_context() -> str:
-    if not S3_BUCKET:
-        return "Актуальне законодавство України 2025 року."
+# def get_rag_context() -> str:
+#     if not S3_BUCKET:
+#         return "Актуальне законодавство України 2025 року."
 
-    try:
-        objects = s3.list_objects_v2(Bucket=S3_BUCKET, MaxKeys=10)
-        texts = []
-        for obj in objects.get("Contents", []):
-            key = obj["Key"]
-            if key.lower().endswith((".txt", ".md", ".pdf")):
-                data = s3.get_object(Bucket=S3_BUCKET, Key=key)
-                content = data["Body"].read().decode("utf-8", errors="ignore")
-                texts.append(f"--- {key} ---\n{content[:7000]}")
-        return "\n\n".join(texts)[:28_000]
-    except Exception as e:
-        print("S3 RAG error:", e)
-        return "Актуальне законодавство України 2025 року."
+#     try:
+#         objects = s3.list_objects_v2(Bucket=S3_BUCKET, MaxKeys=10)
+#         texts = []
+#         for obj in objects.get("Contents", []):
+#             key = obj["Key"]
+#             if key.lower().endswith((".txt", ".md", ".pdf")):
+#                 data = s3.get_object(Bucket=S3_BUCKET, Key=key)
+#                 content = data["Body"].read().decode("utf-8", errors="ignore")
+#                 texts.append(f"--- {key} ---\n{content[:7000]}")
+#         return "\n\n".join(texts)[:28_000]
+#     except Exception as e:
+#         print("S3 RAG error:", e)
+#         return "Актуальне законодавство України 2025 року."
+
+def get_rag_context() -> str:
+    # Для хакатону відключаємо S3 — модель і так знає закони
+    return """
+Актуальне законодавство України станом на 2025 рік:
+• Цивільний кодекс України (редакція 2024–2025)
+• Житловий кодекс України
+• Закон України «Про оренду житла»
+• Закон України «Про електронні довірчі послуги» (Дія.Підпис)
+• Податковий кодекс (ФОП 3 група)
+• Закон про захист персональних даних
+• Стандартні шаблони договорів з реєстру Мін'юсту та Ліга:Закон
+"""
 
 # ------------------- Ендпоінти -------------------
 @app.get("/contracts/types")
@@ -87,18 +104,46 @@ async def generate_contract(req: GenerateRequest):
 
     system_prompt = "Ти — найкращий український юрист 2025 року. Генеруєш тільки чистий текст договору українською мовою без пояснень."
 
+#     user_prompt = f"""
+# Тип договору: {CONTRACTS[req.contract_type]}
+
+# Дані користувача:
+# {json.dumps(answers, ensure_ascii=False, indent=2)}
+
+# База знань (закони, шаблони):
+# {rag}
+
+# Згенеруй повний юридично правильний договір у форматі Markdown.
+# Місце укладення — м. Київ. Суми — прописом.
+# """
     user_prompt = f"""
-Тип договору: {CONTRACTS[req.contract_type]}
+        ТИ — найкращий український корпоративний юрист 2025 року.  
+        Ти створюєш ТІЛЬКИ повний, юридично бездоганний договір українською мовою у форматі Markdown.  
+        Жодних пояснень, коментарів, вибачень чи вступів — тільки чистий текст договору.
 
-Дані користувача:
-{json.dumps(answers, ensure_ascii=False, indent=2)}
+        Тип договору: {CONTRACTS[req.contract_type]}
 
-База знань (закони, шаблони):
-{rag}
+        Дані для заповнення:
+        {json.dumps(answers, ensure_ascii=False, indent=2)}
 
-Згенеруй повний юридично правильний договір у форматі Markdown.
-Місце укладення — м. Київ. Суми — прописом.
-"""
+        Поточна дата: {answers.get("current_date", datetime.now().strftime("%d.%m.%Y"))}
+
+        Вимоги, які ти зобов’язаний виконати 100%:
+        1. Місце укладення — завжди м. Київ
+        2. Повна назва договору великими літерами посередині
+        3. Номер договору не потрібен
+        4. Повні реквізити сторін на початку та в кінці
+        5. ВСІ суми обов’язково прописом українською (наприклад: 50 000 грн — п’ятдесят тисяч гривень 00 копійок)
+        6. Всі дати — і цифрами, і прописом
+        7. Повний набір обов’язкових розділів для цього типу договору (предмет, строк, права та обов’язки, відповідальність, штрафні санкції, форс-мажор, порядок зміни та розірвання, реквізити та підписи)
+        8. Для NDA обов’язково: визначення конфіденційної інформації, строк дії (в роках від дати підписання), штраф за порушення, юрисдикція України
+        9. Для оренди: застава, комунальні платежі, стан квартири, акт приймання-передачі
+        10. Для позики: відсотки або безвідсоткова, графік повернення (якщо є), пеня за прострочення
+        11. Для послуг ФОП: акт виконаних робіт, порядок здачі-приймання, гарантії
+
+        Згенеруй ПОВНИЙ договір «під ключ», готовий до підписання через Дія.Підпис.
+        Використовуй офіційно-діловий стиль, без водяності.
+    """
 
     try:
         response = bedrock.invoke_model(
@@ -106,7 +151,8 @@ async def generate_contract(req: GenerateRequest):
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 8192,
-                "temperature": 0.2,
+                "temperature": 0.5,
+                "top_p": 0.9,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}]
             })
