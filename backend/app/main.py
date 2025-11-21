@@ -161,81 +161,71 @@ async def generate_contract(req: GenerateRequest):
         result = json.loads(response["body"].read())
         text = result["content"][0]["text"].strip()
 
-        # ───── КРАСИВИЙ PDF ЗІ СТИЛЯМИ ─────
-        html_content = markdown.markdown(
-            text,
-            extensions=['tables', 'fenced_code', 'nl2br']  # щоб таблички та переноси працювали
+                # ───── ФІНАЛЬНИЙ КРАСИВИЙ PDF, ЯКИЙ НІКОЛИ НЕ ВИЛАЗИТЬ ЗА А4 ─────
+        html_content = markdown.markdown(text, extensions=['extra', 'tables', 'nl2br'])
+
+        full_html = f"""<!DOCTYPE html>
+        <html lang="uk">
+        <head>
+            <meta charset="UTF-8">
+            <title>{CONTRACTS[req.contract_type]}</title>
+            <style>
+                @page {{
+                    size: A4;
+                    margin: 20mm 15mm 25mm 18mm;
+                    @bottom-center {{ content: "Сторінка " counter(page); font-size: 10pt; color: #666; }}
+                    @bottom-right  {{ content: "Дія.Договір AI • {datetime.now().strftime("%d.%m.%Y")}"; font-size: 9pt; color: #999; }}
+                }}
+                body {{
+                    font-family: "Times New Roman", "DejaVu Serif", serif;
+                    font-size: 12pt;
+                    line-height: 1.5;
+                    color: #000;
+                    margin: 0;
+                    padding: 0;
+                }}
+                h1 {{ font-size: 16pt; text-align: center; text-transform: uppercase; margin: 30pt 0 20pt 0; font-weight: bold; }}
+                h2 {{ font-size: 13pt; margin: 20pt 0 10pt 0; font-weight: bold; }}
+                p {{ margin: 0 0 10pt 0; text-align: justify; text-indent: 30pt; }}
+                p.noindent {{ text-indent: 0; }}
+                p.center {{ text-align: center; text-indent: 0; }}
+                ul, ol {{ margin: 8pt 0; padding-left: 40pt; }}
+                table {{ width: 100%; border-collapse: collapse; margin: 12pt 0; }}
+                td, th {{ border: 1px solid #000; padding: 6pt; vertical-align: top; }}
+                .signature {{
+                    margin-top: 50pt;
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 12pt;
+                }}
+                .signature div {{
+                    width: 48%;
+                    border-top: 1px solid #000;
+                    padding-top: 8pt;
+                    text-align: center;
+                }}
+                .small {{ font-size: 10pt; color: #555; text-align: center; margin-top: 30pt; }}
+            </style>
+        </head>
+        <body>
+            {html_content}
+            
+            <div class="signature">
+                <div>Розкриваюча сторона<br>{answers.get("disclosing_party_name", "______________________")}</div>
+                <div>Отримуюча сторона<br>{answers.get("receiving_party_name", "______________________")}</div>
+            </div>
+            <p class="small">Договір підписано кваліфікованим електронним підписом через Дія.Підпис</p>
+        </body>
+        </html>"""
+
+        pdf_bytes = HTML(string=full_html, base_url=".").write_pdf(
+            stylesheets=[
+                # примусово ламаємо довгі слова і не даємо таблицям/рядкам вилазити
+                "body { word-wrap: break-word; overflow-wrap: break-word; }"
+            ]
         )
-
-        # CSS
-        full_html = f"""
-            <!DOCTYPE html>
-            <html lang="uk">
-            <head>
-                <meta charset="UTF-8">
-                <title>{CONTRACTS[req.contract_type]}</title>
-                <style>
-                    @page {{
-                        size: A4;
-                        margin: 2cm 1.5cm 2.5cm 1.5cm;
-                        @bottom-center {{
-                            content: "Сторінка " counter(page);
-                            font-family: DejaVu Sans, Arial, sans-serif;
-                            font-size: 10pt;
-                            color: #555;
-                        }};
-                        @bottom-right {{
-                            content: "Згенеровано Дія.Договір AI • {datetime.now().strftime("%d.%m.%Y")}";
-                            font-family: DejaVu Sans, Arial, sans-serif;
-                            font-size: 9pt;
-                            color: #999;
-                        }};
-                    }}
-                    body {{
-                        font-family: DejaVu Sans, Arial, sans-serif;
-                        font-size: 12pt;
-                        line-height: 1.6;
-                        color: #212529;
-                    }}
-                    h1, h2, h3 {{
-                        text-align: center;
-                        font-weight: bold;
-                        margin: 1.5em 0 1em 0;
-                        text-transform: uppercase;
-                    }}
-                    h1 {{ font-size: 16pt; }}
-                    h2 {{ font-size: 14pt; }}
-                    p {{ text-align: justify; text-indent: 3em; margin: 0.7em 0; }}
-                    .center {{ text-align: center; text-indent: 0; }}
-                    .signature {{
-                        margin-top: 3cm;
-                        display: flex;
-                        justify-content: space-between;
-                    }}
-                    .signature div {{
-                        width: 45%;
-                        border-top: 1px solid #000;
-                        padding-top: 0.5cm;
-                        text-align: center;
-                        font-size: 11pt;
-                    }}
-                    table {{ width: 100%; border-collapse: collapse; margin: 1em 0; }}
-                    td, th {{ border: 1px solid #999; padding: 0.4em; }}
-                </style>
-            </head>
-            <body>
-                {html_content}
-                <div class="signature">
-                    <div>Розкриваюча сторона<br>{answers.get("disclosing_party_name", "")}</div>
-                    <div>Отримуюча сторона<br>{answers.get("receiving_party_name", "")}</div>
-                </div>
-                <p class="center"><small>Договір підписано кваліфікованим електронним підписом через Дія.Підпис</small></p>
-            </body>
-            </html>
-        """
-
-        pdf_bytes = HTML(string=full_html, base_url=".").write_pdf()
-        pdf_b64 = base64.b64encode(pdf_bytes).decode()
+        pdf_b64 = base64.b64encode(pdf_bytes).decode()    
+    
         # PDF
         # html = markdown.markdown(text)
         # styled = f"<html><head><meta charset='utf-8'></head><body style='font-family: Arial; padding: 40px;'>{html}</body></html>"
