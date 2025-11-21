@@ -120,3 +120,40 @@ textarea.input {
   margin-top: 0.25rem;
   margin-bottom: 0.75rem;
 }
+
+/* Додаємо це в ContractFlow.module.css */
+.preContainer {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;               /* горизонтальний скрол тільки якщо реально треба */
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.preContainer pre {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Красиві підписи внизу прев’ю */
+.signatures {
+  display: 2rem;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.signatures div {
+  width: 45%;
+  border-top: 1px solid #495057;
+  padding-top: 0.5rem;
+  text-align: center;
+}
