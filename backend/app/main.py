@@ -161,11 +161,86 @@ async def generate_contract(req: GenerateRequest):
         result = json.loads(response["body"].read())
         text = result["content"][0]["text"].strip()
 
-        # PDF
-        html = markdown.markdown(text)
-        styled = f"<html><head><meta charset='utf-8'></head><body style='font-family: Arial; padding: 40px;'>{html}</body></html>"
-        pdf_bytes = HTML(string=styled).write_pdf()
+        # ───── КРАСИВИЙ PDF ЗІ СТИЛЯМИ ─────
+        html_content = markdown.markdown(
+            text,
+            extensions=['tables', 'fenced_code', 'nl2br']  # щоб таблички та переноси працювали
+        )
+
+        # CSS
+        full_html = f"""
+            <!DOCTYPE html>
+            <html lang="uk">
+            <head>
+                <meta charset="UTF-8">
+                <title>{CONTRACTS[req.contract_type]}</title>
+                <style>
+                    @page {{
+                        size: A4;
+                        margin: 2cm 1.5cm 2.5cm 1.5cm;
+                        @bottom-center {{
+                            content: "Сторінка " counter(page);
+                            font-family: DejaVu Sans, Arial, sans-serif;
+                            font-size: 10pt;
+                            color: #555;
+                        }};
+                        @bottom-right {{
+                            content: "Згенеровано Дія.Договір AI • {datetime.now().strftime("%d.%m.%Y")}";
+                            font-family: DejaVu Sans, Arial, sans-serif;
+                            font-size: 9pt;
+                            color: #999;
+                        }};
+                    }}
+                    body {{
+                        font-family: DejaVu Sans, Arial, sans-serif;
+                        font-size: 12pt;
+                        line-height: 1.6;
+                        color: #212529;
+                    }}
+                    h1, h2, h3 {{
+                        text-align: center;
+                        font-weight: bold;
+                        margin: 1.5em 0 1em 0;
+                        text-transform: uppercase;
+                    }}
+                    h1 {{ font-size: 16pt; }}
+                    h2 {{ font-size: 14pt; }}
+                    p {{ text-align: justify; text-indent: 3em; margin: 0.7em 0; }}
+                    .center {{ text-align: center; text-indent: 0; }}
+                    .signature {{
+                        margin-top: 3cm;
+                        display: flex;
+                        justify-content: space-between;
+                    }}
+                    .signature div {{
+                        width: 45%;
+                        border-top: 1px solid #000;
+                        padding-top: 0.5cm;
+                        text-align: center;
+                        font-size: 11pt;
+                    }}
+                    table {{ width: 100%; border-collapse: collapse; margin: 1em 0; }}
+                    td, th {{ border: 1px solid #999; padding: 0.4em; }}
+                </style>
+            </head>
+            <body>
+                {html_content}
+                <div class="signature">
+                    <div>Розкриваюча сторона<br>{answers.get("disclosing_party_name", "")}</div>
+                    <div>Отримуюча сторона<br>{answers.get("receiving_party_name", "")}</div>
+                </div>
+                <p class="center"><small>Договір підписано кваліфікованим електронним підписом через Дія.Підпис</small></p>
+            </body>
+            </html>
+        """
+
+        pdf_bytes = HTML(string=full_html, base_url=".").write_pdf()
         pdf_b64 = base64.b64encode(pdf_bytes).decode()
+        # PDF
+        # html = markdown.markdown(text)
+        # styled = f"<html><head><meta charset='utf-8'></head><body style='font-family: Arial; padding: 40px;'>{html}</body></html>"
+        # pdf_bytes = HTML(string=styled).write_pdf()
+        # pdf_b64 = base64.b64encode(pdf_bytes).decode()
 
         return GenerateResponse(
             contract_type=req.contract_type,
