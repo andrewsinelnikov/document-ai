@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -103,20 +103,7 @@ async def generate_contract(req: GenerateRequest):
 
     rag = get_rag_context()
 
-    system_prompt = "Ти — найкращий український юрист 2025 року. Генеруєш тільки чистий текст договору українською мовою без пояснень."
-
-#     user_prompt = f"""
-# Тип договору: {CONTRACTS[req.contract_type]}
-
-# Дані користувача:
-# {json.dumps(answers, ensure_ascii=False, indent=2)}
-
-# База знань (закони, шаблони):
-# {rag}
-
-# Згенеруй повний юридично правильний договір у форматі Markdown.
-# Місце укладення — м. Київ. Суми — прописом.
-# """
+    system_prompt = "Ти — найкращий український юрист року. Генеруєш тільки чистий текст договору українською мовою без пояснень."
     user_prompt = f"""
         ТИ — найкращий український юрист-контрактник року. Твоя єдина задача — згенерувати ПОВНИЙ, юридично бездоганний договір українською мовою у форматі Markdown.
 
@@ -148,7 +135,6 @@ async def generate_contract(req: GenerateRequest):
 
         Якщо не виконаєш всі пункти — тебе звільнять з посади головного юриста України.
     """
-
     try:
         response = bedrock.invoke_model(
             modelId=MODEL_ID,
@@ -156,115 +142,99 @@ async def generate_contract(req: GenerateRequest):
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 8192,
                 "temperature": 0.5,
-                "top_p": 0.9,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}]
             })
         )
 
         result = json.loads(response["body"].read())
-        text = result["content"][0]["text"].strip()
+        markdown_text = result["content"][0]["text"].strip()
 
-                # ───── ФІНАЛЬНИЙ PDF — 100% НЕ ВИЛІЗАЄ ЗА ПОЛЯ (WeasyPrint 62.2 + правильний CSS) ─────
-        
-        # safe_lines = []
-        # for line in text.splitlines():
-        #     # Якщо рядок довший за 95 символів — ріжемо його
-        #     if len(line) > 95 and ' ' not in line:
-        #         safe_lines.extend(textwrap.wrap(line, width=95))
-        #     else:
-        #         safe_lines.append(line)
-        # safe_text = "\n".join(safe_lines)
+        # 1. Генеруємо красивий HTML для веб-прев'ю
+        html_content = markdown.markdown(
+            markdown_text,
+            extensions=['extra', 'tables', 'nl2br', 'sane_lists']
+        )
 
-        # # КРОК 2: Markdown → HTML
-        # html_content = markdown.markdown(safe_text, extensions=['extra', 'tables', 'nl2br'])
-
-        # # КРОК 3: Шаблон з жорстким CSS
-        # full_html = f"""<!DOCTYPE html>
-        # <html lang="uk">
-        # <head>
-        #     <meta charset="UTF-8">
-        #     <title>{CONTRACTS[req.contract_type]}</title>
-        #     <style>
-        #         @page {{
-        #             size: A4;
-        #             margin: 18mm 16mm 25mm 16mm;
-        #             @bottom-center {{ content: "Сторінка " counter(page); font-size: 10pt; color: #666; }}
-        #         }}
-        #         body {{
-        #             font-family: "Liberation Serif", "Times New Roman", serif;
-        #             font-size: 12pt;
-        #             line-height: 1.55;
-        #             margin: 0;
-        #             padding: 0;
-        #         }}
-        #         h1 {{ font-size: 18pt; text-align: center; text-transform: uppercase; margin: 30mm 0 20mm; }}
-        #         p {{ text-indent: 35pt; text-align: justify; margin: 0 0 12pt 0; }}
-        #         table {{ width: 100%; table-layout: fixed; border-collapse: collapse; }}
-        #         td, th {{ border: 1px solid black; padding: 8pt; }}
-        #         .signature {{ margin-top: 60mm; display: flex; justify-content: space-between; }}
-        #         .signature div {{ width: 48%; border-top: 1px solid black; padding-top: 12pt; text-align: center; }}
-        #     </style>
-        # </head>
-        # <body>
-        #     {html_content}
-        #     <div class="signature">
-        #         <div>Перша сторона<br>_________________________</div>
-        #         <div>Друга сторона<br>_________________________</div>
-        #     </div>
-        #     <p style="text-align:center; font-size:10pt; color:#555; margin-top:30mm;">
-        #         Договір підписано кваліфікованим електронним підписом через Дія.Підпис
-        #     </p>
-        # </body>
-        # </html>"""
-
-        # # КРОК 4: Найголовніше — додатковий CSS, який ламає ВСЕ
-        # pdf_bytes = HTML(string=full_html).write_pdf(
-        #     stylesheets=[CSS(string="""
-        #         * { 
-        #             word-break: break-all !important; 
-        #             overflow-wrap: break-word !important; 
-        #             hyphens: auto !important;
-        #         }
-        #         table, td, th { table-layout: fixed !important; word-break: break-all !important; }
-        #     """)]
-        # )
-        # pdf_b64 = base64.b64encode(pdf_bytes).decode()
-    
-        # PDF
-        # html = markdown.markdown(text)
-        # styled = f"<html><head><meta charset='utf-8'></head><body style='font-family: Arial; padding: 40px;'>{html}</body></html>"
-        # pdf_bytes = HTML(string=styled).write_pdf()
-        # pdf_b64 = base64.b64encode(pdf_bytes).decode()
-
-        html_content = markdown.markdown(text, extensions=['extra', 'tables', 'nl2br'])
-        
-        final_html = f"""
-        <div style="max-width: 100%; word-break: break-word;">
+        # Додаємо підписи та футер
+        full_html = f"""
+        <!DOCTYPE html>
+        <html lang="uk"><head><meta charset="utf-8">
+        <style>
+            body {{ font-family: 'Times New Roman', serif; font-size: 14pt; line-height: 1.65; padding: 40px 60px; background: white; color: black; }}
+            h1 {{ text-align: center; text-transform: uppercase; font-size: 20pt; margin: 40px 0 50px; font-weight: bold; }}
+            h2 {{ font-size: 15pt; margin: 30px 0 15px; font-weight: bold; }}
+            p {{ text-indent: 3.5rem; text-align: justify; margin: 0 0 12pt; }}
+            ul, ol {{ margin: 12pt 0; padding-left: 4rem; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            td, th {{ border: 1px solid black; padding: 8px; word-break: break-word; }}
+            .signature {{ margin-top: 80px; display: flex; justify-content: space-between; }}
+            .signature div {{ width: 45%; text-align: center; border-top: 1px solid black; padding-top: 12px; }}
+            .footer {{ text-align: center; font-size: 11pt; color: #555; margin-top: 60px; }}
+        </style>
+        </head><body>
             {html_content}
-        </div>
+            <div class="signature">
+                <div>Перша сторона<br>______________________</div>
+                <div>Друга сторона<br>______________________</div>
+            </div>
+            <div class="footer">
+                Договір підписано кваліфікованим електронним підписом через Дія.Підпис
+            </div>
+        </body></html>
         """
-
-        pdf_b64 = base64.b64encode(final_html.encode('utf-8')).decode()
-
-        # return GenerateResponse(
-        #     contract_type=req.contract_type,
-        #     title=CONTRACTS.get(req.contract_type, "Договір"),
-        #     content_markdown=text,
-        #     content_pdf_base64=pdf_b64,  
-        #     content_html=final_html
-        #     generated_at=datetime.now()
-        # )
 
         return GenerateResponse(
             contract_type=req.contract_type,
             title=CONTRACTS[req.contract_type],
-            content_markdown=text,
-            content_pdf_base64=pdf_b64,
+            content_markdown=markdown_text,
+            content_html=full_html,                    # ← для швидкого веб-прев'ю
+            content_pdf_base64=None,                   # ← поки null
+            generated_at=datetime.now()
         )
 
     except Exception as e:
         raise HTTPException(500, f"Bedrock error: {str(e)}")
+
+@app.post("/contracts/to-pdf")
+async def generate_pdf_endpoint(request: GenerateRequest):
+    """Окремий ендпоінт — генерує PDF тільки коли користувач натиснув кнопку"""
+    # Повторно генеруємо markdown (можна кешувати, але для простоти — повтор)
+    # Або краще: передавай markdown_text у тілі запиту — ще швидше
+
+    # Простий варіант — повторюємо генерацію (Claude швидко)
+    result = await generate_contract(request)  # перевикористовуємо логіку
+    markdown_text = result.content_markdown
+
+    html_content = markdown.markdown(markdown_text, extensions=['extra', 'tables', 'nl2br', 'sane_lists'])
+    
+    full_html = f"""<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8">
+        <style>
+            @page {{ size: A4; margin: 20mm 16mm 25mm 16mm;
+                @bottom-center {{ content: "Сторінка " counter(page); font-size: 10pt; color: #666; }}
+            }}
+            body {{ font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.6; }}
+            h1 {{ text-align: center; text-transform: uppercase; font-size: 18pt; margin: 40mm 0 30mm; }}
+            p {{ text-indent: 35pt; text-align: justify; margin: 0 0 12pt; }}
+            table {{ width: 100%; table-layout: fixed; border-collapse: collapse; }}
+            td, th {{ border: 1px solid black; padding: 8px; word-break: break-all; }}
+            .signature {{ margin-top: 80mm; display: flex; justify-content: space-between; }}
+            .signature div {{ width: 45%; border-top: 1px solid black; padding-top: 12px; text-align: center; }}
+        </style></head><body>
+        {html_content}
+        <div class="signature"> ... </div>
+        </body></html>"""
+
+    pdf_bytes = HTML(string=full_html).write_pdf(
+        stylesheets=[CSS(string="""
+            * { word-break: break-word !important; overflow-wrap: break-word !important; }
+            table, td, th { word-break: break-all !important; }
+        """)]
+    )
+
+    pdf_b64 = base64.b64encode(pdf_bytes).decode()
+
+    return {"content_pdf_base64": pdf_b64, "title": result.title}
 
 @app.get("/health")
 def health():
