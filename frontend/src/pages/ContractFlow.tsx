@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { generate } from '../api/api';
 import styles from './ContractFlow.module.css';
-import { Loader2, ArrowLeft, Download, FileText } from 'lucide-react';
+import { Loader2, ArrowLeft, Download } from 'lucide-react';
 import type { ContractType, FormField, ContractResult } from '../types/contract';
 // import { marked } from 'marked';
 
@@ -125,13 +125,15 @@ export default function ContractFlow() {
     }
   }, [result]);
 
+
   const downloadPdf = () => {
-    if (!pdfBase64 || !result) return;
-    const link = document.createElement('a');
-    link.href = `data:application/pdf;base64,${pdfBase64}`;
-    link.download = `${result.title}.pdf`;
-    link.click();
-  };
+  if (!pdfBase64 || !result) return;
+
+  const link = document.createElement('a');
+  link.href = `data:application/pdf;base64,${pdfBase64}`;
+  link.download = `${result.title.replace(/[/\\?%*:|"<>]/g, '-')}.pdf`;
+  link.click();
+};
 
   const downloadMarkdown = () => {
     if (!result) return;

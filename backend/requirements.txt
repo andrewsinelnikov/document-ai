@@ -4,4 +4,4 @@ boto3
 python-dotenv
 markdown
 pydantic
-weasyprint==62.2
+weasyprint
