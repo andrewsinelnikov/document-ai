@@ -1,14 +1,21 @@
-export type ContractType = 
-  | "Оренда квартири"
-  | "Надання послуг (ФОП)"
-  | "NDA"
-  | "Позика";
+export type ContractType = 'rent_contract' | 'loan_contract' | 'nda_contract' | 'service_contract';
 
-// export type ContractType = 'rent_contract' | 'loan_contract' | 'nda_contract' | 'service_contract';
+// export type ContractType = 
+//   | "Оренда квартири"
+//   | "Надання послуг (ФОП)"
+//   | "NDA"
+//   | "Позика";
 
 export interface UserAnswer {
   question: string;
   answer: string;
+}
+
+export interface FormField {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'textarea';
+  required?: boolean;
 }
 
 export interface ContractResult {
