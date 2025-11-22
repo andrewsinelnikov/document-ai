@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ContractResult } from '../types/contract';
 
 const api = axios.create({
   baseURL: import.meta.env.DEV ? 'http://localhost:8000' : '',
@@ -23,13 +24,29 @@ export interface GenerateResponse {
 export const getContractTypes = () =>
   api.get<ContractTypeResponse[]>('/contracts/types').then(r => r.data);
 
-// ТВІЙ РЯДОК — залишаємо без змін
-export const generate = (type: string, answers: Record<string, any>) =>
-  api.post('/contracts/generate', {
-    contract_type: type,
-    form_data: answers,
-  }).then(r => r.data);   // ← тут вже правильно
+// export const generate = (type: string, answers: Record<string, any>) =>
+//   api.post('/contracts/generate', {
+//     contract_type: type,
+//     form_data: answers,
+//   }).then(r => r.data);   
 
+export const generate = async (contractType: string, formData: Record<string, any>) => {
+  const res = await fetch('/contracts/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contract_type: contractType,
+      form_data: formData,
+    }),
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error || 'Помилка сервера');
+  }
+
+  return (await res.json()) as ContractResult;
+};  
 // (необов’язково) можна ще додати тип для generate
 export const generateTyped = (type: string, answers: Record<string, any>): Promise<GenerateResponse> =>
   generate(type, answers);
