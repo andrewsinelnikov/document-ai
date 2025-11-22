@@ -176,7 +176,6 @@ textarea.input {
 .resultPreview p:first-of-type { text-indent: 0; }
 .resultPreview ul, .resultPreview ol { margin: 0.8rem 0; padding-left: 2.5rem; }
 
-/* Найголовніше — ламаємо довгі слова */
 .resultPreview * {
   word-break: break-word;
   overflow-wrap: break-word;
